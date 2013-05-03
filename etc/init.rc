@@ -1,0 +1,117 @@
+on early-init
+    start ueventd
+
+
+on post-fs
+    chown system system /sys/class/android_usb/android0/f_mass_storage/lun/file
+    chmod 0660 /sys/class/android_usb/android0/f_mass_storage/lun/file
+    chown system system /sys/class/android_usb/android0/f_rndis/ethaddr
+    chmod 0660 /sys/class/android_usb/android0/f_rndis/ethaddr
+
+
+on init
+    export PATH /sbin
+    export ANDROID_ROOT /system
+    export ANDROID_DATA /data
+    export EXTERNAL_STORAGE /sdcard
+
+    symlink /system/etc /etc
+
+    mkdir /boot
+    mkdir /sdcard
+    mkdir /sd-ext
+    mkdir /datadata
+    mkdir /emmc
+    mkdir /system
+    mkdir /data
+    mkdir /cache
+    mount /tmp /tmp tmpfs
+
+    chown root shell /tmp
+    chmod 0775 /tmp
+
+    write /sys/class/android_usb/android0/enable 0
+    write /sys/class/android_usb/android0/idVendor 18D1
+    write /sys/class/android_usb/android0/idProduct D001
+    write /sys/class/android_usb/android0/functions adb
+    write /sys/class/android_usb/android0/iManufacturer HUAWEI
+    write /sys/class/android_usb/android0/iProduct HUAWEI-U8850
+    #write /sys/class/android_usb/android0/iSerial 
+
+
+on boot
+
+    ifup lo
+    hostname localhost
+    domainname localdomain
+
+    class_start default
+
+service ueventd /sbin/ueventd
+    critical
+
+service recovery /sbin/recovery
+
+service adbd /sbin/adbd recovery
+    disabled
+
+
+service rmt_storage /system/bin/rmt_storage /dev/block/mmcblk0p13 /dev/block/mmcblk0p14 /dev/block/mmcblk0p15
+    user root
+    enabled
+
+on property:ro.emmc=1
+    start rmt_storage
+
+
+
+
+
+# Used to disable USB when switching states
+on property:sys.usb.config=none
+    stop adbd
+    write /sys/class/android_usb/android0/enable 0
+    write /sys/class/android_usb/android0/bDeviceClass 0
+    setprop sys.usb.state $sys.usb.config
+
+# adb only USB configuration
+# This should only be used during device bringup
+# and as a fallback if the USB manager fails to set a standard configuration
+on property:sys.usb.config=adb
+    write /sys/class/android_usb/android0/enable 0
+    write /sys/class/android_usb/android0/idVendor 18d1
+    write /sys/class/android_usb/android0/idProduct D002
+    write /sys/class/android_usb/android0/functions $sys.usb.config
+    write /sys/class/android_usb/android0/enable 1
+    start adbd
+    setprop sys.usb.state $sys.usb.config
+
+# USB accessory configuration
+on property:sys.usb.config=accessory
+    write /sys/class/android_usb/android0/enable 0
+    write /sys/class/android_usb/android0/idVendor 18d1
+    write /sys/class/android_usb/android0/idProduct 2d00
+    write /sys/class/android_usb/android0/functions $sys.usb.config
+    write /sys/class/android_usb/android0/enable 1
+    setprop sys.usb.state $sys.usb.config
+
+# USB accessory configuration, with adb
+on property:sys.usb.config=accessory,adb
+    write /sys/class/android_usb/android0/enable 0
+    write /sys/class/android_usb/android0/idVendor 18d1
+    write /sys/class/android_usb/android0/idProduct 2d01
+    write /sys/class/android_usb/android0/functions $sys.usb.config
+    write /sys/class/android_usb/android0/enable 1
+    start adbd
+    setprop sys.usb.state $sys.usb.config
+
+# Used to set USB configuration at boot and to switch the configuration
+# when changing the default configuration
+on property:persist.sys.usb.config=*
+    setprop sys.usb.config $persist.sys.usb.config
+
+on property:service.adb.root=1
+    write /sys/class/android_usb/android0/enable 0
+    restart adbd
+    write /sys/class/android_usb/android0/enable 1
+
